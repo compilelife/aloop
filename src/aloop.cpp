@@ -169,7 +169,7 @@ struct ALooperRoster {
 static ALooperRoster gLooperRoster;
 
 ALooper::ALooper() 
-    : mRunningLocally(false), mRun(false){
+    : mRun(false), mRunningLocally(false){
 }
 
 sp<ALooper> ALooper::create() {
@@ -375,8 +375,8 @@ bool ALooper::loop() {
 
 AMessage::AMessage()
     : mWhat(0),
-    mNumItems(0),
-    mTarget(INVALID_HANDLER_ID) {
+    mTarget(INVALID_HANDLER_ID),
+    mNumItems(0) {
 }
 
 AMessage::AMessage(uint32_t what, const sp<AHandler> &handler)
