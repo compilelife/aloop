@@ -42,6 +42,8 @@ public:
         if (looper){
             looper->stop();
             looper->unregisterHandler(handler->id());
+			handler.reset();
+			looper.reset();
         }
     }
 };
