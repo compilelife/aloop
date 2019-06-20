@@ -48,8 +48,8 @@ public:
     }
 
 private:
-    friend struct AMessage;
-    friend struct ALooper;
+    friend class AMessage;
+    friend class ALooper;
     wp<ALooper> mLooper;
     sp<AMessage> mReply;
     bool mReplied;
@@ -103,7 +103,8 @@ void AHandler::deliverMessage(const sp<AMessage> &msg) {
 const handler_id INVALID_HANDLER_ID = 0;
 
 //统一不同looper的register/unregister到一个地方，可以避免多线程情况把一个handler注册到多个looper中
-struct ALooperRoster {
+class ALooperRoster {
+public:
     struct HandlerInfo {
         ALooper* mLooper;
         wp<AHandler> mHandler;

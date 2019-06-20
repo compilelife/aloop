@@ -60,8 +60,8 @@ protected:
     virtual void onMessageReceived(const std::shared_ptr<AMessage> &msg) = 0;
 
 private:
-    friend struct AMessage;      // deliverMessage()
-    friend struct ALooperRoster; // setID()
+    friend class AMessage;      // deliverMessage()
+    friend class ALooperRoster; // setID()
 
     std::atomic<handler_id> mID;
     std::weak_ptr<ALooper> mLooper;
