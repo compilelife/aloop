@@ -4,13 +4,13 @@
 using namespace aloop;
 using namespace std;
 
-class MyHandler : public AHandler{
+class EmptyHandler : public AHandler{
 protected:
     virtual void onMessageReceived(const shared_ptr<AMessage> &msg){}
 };
 
 TEST(AHandler, InitState){
-    shared_ptr<AHandler> handler(new MyHandler);
+    shared_ptr<AHandler> handler(new EmptyHandler);
 
     ASSERT_EQ(INVALID_HANDLER_ID, handler->id());
     ASSERT_TRUE(handler->getLooper().expired());
@@ -18,7 +18,7 @@ TEST(AHandler, InitState){
 
 TEST(AHandler, Register){
     auto looper = ALooper::create();
-    shared_ptr<AHandler> handler(new MyHandler);
+    shared_ptr<AHandler> handler(new EmptyHandler);
 
     auto id = looper->registerHandler(handler);
     ASSERT_EQ(id, handler->id());
@@ -28,7 +28,7 @@ TEST(AHandler, Register){
 
 TEST(AHandler, RegisterTwice){
     auto looper = ALooper::create();
-    shared_ptr<AHandler> handler(new MyHandler);
+    shared_ptr<AHandler> handler(new EmptyHandler);
 
     ASSERT_NE(INVALID_HANDLER_ID, looper->registerHandler(handler));
     ASSERT_EQ(INVALID_HANDLER_ID, looper->registerHandler(handler));
@@ -36,7 +36,7 @@ TEST(AHandler, RegisterTwice){
 
 TEST(AHandler, Unregister){
     auto looper = ALooper::create();
-    shared_ptr<AHandler> handler(new MyHandler);
+    shared_ptr<AHandler> handler(new EmptyHandler);
 
     auto id = looper->registerHandler(handler);
     ASSERT_NE(INVALID_HANDLER_ID, id);
@@ -50,7 +50,7 @@ TEST(AHandler, Unregister){
 }
 
 TEST(AHandler, AutoUnregister) {
-    shared_ptr<AHandler> handler(new MyHandler);
+    shared_ptr<AHandler> handler(new EmptyHandler);
     {
         auto looper = ALooper::create();
         auto id = looper->registerHandler(handler);
@@ -63,7 +63,7 @@ TEST(AHandler, RegisterToTwoLooper){
     auto l1 = ALooper::create();
     auto l2 = ALooper::create();
 
-    shared_ptr<AHandler> handler(new MyHandler);
+    shared_ptr<AHandler> handler(new EmptyHandler);
 
     ASSERT_NE(INVALID_HANDLER_ID, l1->registerHandler(handler));
     ASSERT_EQ(INVALID_HANDLER_ID, l2->registerHandler(handler));
@@ -73,8 +73,8 @@ TEST(AHandler, GlobalId){
     auto l1 = ALooper::create();
     auto l2 = ALooper::create();
 
-    shared_ptr<AHandler> h1(new MyHandler);
-    shared_ptr<AHandler> h2(new MyHandler);
+    shared_ptr<AHandler> h1(new EmptyHandler);
+    shared_ptr<AHandler> h2(new EmptyHandler);
 
     auto id1 = l1->registerHandler(h1);
     auto id2 = l2->registerHandler(h2);
