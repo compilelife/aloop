@@ -145,7 +145,7 @@ private:
 
     std::list<Event> mEventQueue;
 
-    std::shared_ptr<std::thread> mThread;
+    std::thread mThread;
     bool mRunningLocally;
 
     // use a separate lock for reply handling, as it is always on another thread

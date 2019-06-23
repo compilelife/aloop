@@ -13,7 +13,7 @@ namespace aloop{
 using namespace std;
 
 using PrintFunc = function<void(int level, const char* msg)>;
-PrintFunc g_doPrint = [](int level, const char* msg){
+static PrintFunc g_doPrint = [](int level, const char* msg){
     const char* slevel[3] = {"INFO", "WARN", "ERR"};
     printf("[%s] %s\n", slevel[level], msg);
 };
@@ -224,24 +224,24 @@ status_t ALooper::start(bool runOnCallingThread) {
 
     mRun = true;
     logi("start on new thread");
-    mThread = sp<std::thread>(new std::thread([](ALooper* looper){
+    mThread = thread([](ALooper* looper){
         do{
         }while(looper->mRun && looper->loop());
-    }, this));
+    }, this);
     return OK;
 }
 
 status_t ALooper::stop() {
     bool runningLocally;
-    sp<std::thread> thread;
+    thread thd;
 
     {
         Autolock l(mLock);
         if (!mRun)
             return INVALID_OPERATION;
 
-        mThread.swap(thread);
         runningLocally = mRunningLocally;
+        mThread.swap(thd);
         mRunningLocally = false;
         mRun = false;
     }
@@ -252,8 +252,8 @@ status_t ALooper::stop() {
         mRepliesCondition.notify_all();
     }
 
-    if (!runningLocally && thread->joinable()) {
-        thread->join();
+    if (!runningLocally && thd.joinable()) {
+        thd.join();
     }
 
     return OK;
