@@ -253,7 +253,12 @@ status_t ALooper::stop() {
     }
 
     if (!runningLocally && thd.joinable()) {
-        thd.join();
+        if (thd.get_id() == this_thread::get_id()){
+            logw("stop in looper thread, make detach");
+            thd.detach();
+        }else{
+            thd.join();
+        }
     }
 
     return OK;

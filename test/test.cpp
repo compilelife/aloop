@@ -4,6 +4,8 @@
 #include <functional>
 #include <future>
 #include <vector>
+#include <mutex>
+#include <condition_variable>
 
 using namespace std;
 using namespace aloop;
@@ -24,45 +26,45 @@ protected:
     }
 };
 
-static shared_ptr<ALooper> looper;
-static shared_ptr<MyHandler> handler;
-
 class ALoopTest : public testing::Test {
 public:
     static void SetUpTestCase() {}
     static void TearDownTestCase() {}
 
     virtual void SetUp() {
-        looper = ALooper::create();
-        handler.reset(new MyHandler);
-        ASSERT_EQ(OK, looper->start());
-        ASSERT_NE(INVALID_HANDLER_ID, looper->registerHandler(handler));
+        mLooper = ALooper::create();
+        mHandler.reset(new MyHandler);
+        ASSERT_EQ(OK, mLooper->start());
+        ASSERT_NE(INVALID_HANDLER_ID, mLooper->registerHandler(mHandler));
     }
     virtual void TearDown() {
-        if (looper){
-            looper->stop();
-            looper->unregisterHandler(handler->id());
-			handler.reset();
-			looper.reset();
+        if (mLooper){
+            mLooper->stop();
+            mLooper->unregisterHandler(mHandler->id());
+			mHandler.reset();
+			mLooper.reset();
         }
     }
+protected:
+    shared_ptr<ALooper> mLooper;
+    shared_ptr<MyHandler> mHandler;
 };
 
 TEST_F(ALoopTest, post) {
     promise<void> barrier;
     auto barrierFuture = barrier.get_future();
 
-    handler->setProcessor([&barrier](Msg msg){
+    mHandler->setProcessor([&barrier](Msg msg){
         barrier.set_value();
     });
 
-    AMessage::create(0, handler)->post();
+    AMessage::create(0, mHandler)->post();
 
     ASSERT_EQ(future_status::ready, barrierFuture.wait_for(chrono::milliseconds(100)));
 }
 
 TEST_F(ALoopTest, postAndAwaitResponse) {
-    handler->setProcessor([](Msg msg){
+    mHandler->setProcessor([](Msg msg){
         shared_ptr<AReplyToken> token;
         ASSERT_TRUE(msg->senderAwaitsResponse(&token));
 
@@ -72,7 +74,7 @@ TEST_F(ALoopTest, postAndAwaitResponse) {
     });
 
     auto response = AMessage::createNull();
-    ASSERT_EQ(OK, AMessage::create(0, handler)->postAndAwaitResponse(&response));
+    ASSERT_EQ(OK, AMessage::create(0, mHandler)->postAndAwaitResponse(&response));
     int32_t value;
     ASSERT_TRUE(response->findInt32("int32", &value));
     ASSERT_EQ(1, value);
@@ -82,7 +84,7 @@ TEST_F(ALoopTest, postInsideHandler){
     vector<int> extra;
     promise<void> barrier;
     
-    handler->setProcessor([&](Msg msg){
+    mHandler->setProcessor([&](Msg msg){
         int value = 0;
         ASSERT_TRUE(msg->findInt32("extra", &value));
         extra.push_back(value);
@@ -94,7 +96,7 @@ TEST_F(ALoopTest, postInsideHandler){
         }
     });
 
-    auto msg = AMessage::create(0, handler);
+    auto msg = AMessage::create(0, mHandler);
     msg->setInt32("extra", 1);
     ASSERT_EQ(OK, msg->post());
 
@@ -107,28 +109,82 @@ TEST_F(ALoopTest, postInsideHandler){
 }
 
 TEST_F(ALoopTest, postAfterFree){
-    handler->setProcessor([](Msg msg){
+    mHandler->setProcessor([](Msg msg){
         ASSERT_TRUE(false)<<"post after stop should not be handlered";
     });
 
-    looper.reset();
+    mLooper.reset();
 
-    ASSERT_NE(OK, AMessage::create(0, handler)->post());
+    ASSERT_NE(OK, AMessage::create(0, mHandler)->post());
 }
 
-TEST_F(ALoopTest, postDealy){
-    int64_t begin = looper->GetNowUs();
+TEST_F(ALoopTest, Delay){
+    int64_t begin = mLooper->GetNowUs();
     promise<int64_t> duration;
-    handler->setProcessor([&](Msg msg){
-        duration.set_value(looper->GetNowUs() - begin);
+    mHandler->setProcessor([&](Msg msg){
+        duration.set_value(mLooper->GetNowUs() - begin);
     });
 
     const int64_t delay = 100*1000L;
-    ASSERT_EQ(OK, AMessage::create(0, handler)->post(delay));
+    ASSERT_EQ(OK, AMessage::create(0, mHandler)->post(delay));
 
     auto durationFuture = duration.get_future();
     ASSERT_EQ(future_status::ready, durationFuture.wait_for(chrono::milliseconds(200)));
     auto diff = abs(durationFuture.get() - delay);
 
     ASSERT_TRUE(diff < 10*1000L);
+}
+
+TEST(ALoop, stopInsideThread) {//该项测试不应该卡死或异常
+    class Sync{
+    public:
+        int step{0};
+        mutex lock;
+        condition_variable cv;
+    };
+
+    class LooperHandler : public AHandler{
+    public:
+        shared_ptr<ALooper> looper;
+        Sync* sync;
+
+        LooperHandler(){
+            looper = ALooper::create();
+            looper->start();
+        }
+    protected:
+        void onMessageReceived(const shared_ptr<AMessage> &msg){
+            //当调用onMessageReceived的时候，looper线程需要持有handler的强引用.
+            //当外面执行reset后，这里就是唯一引用了
+            //onMessageReceived返回后就会调用alooper的析构
+            unique_lock<mutex> l(sync->lock);
+            sync->step = 1;
+            sync->cv.notify_one();
+
+            sync->cv.wait(l, [this]{return this->sync->step == 2;});
+        }
+    };
+
+    shared_ptr<LooperHandler> lh(new LooperHandler);
+    Sync sync;
+    lh->looper->registerHandler(lh);
+    lh->sync = &sync;
+
+    AMessage::create(0, lh)->post();
+    weak_ptr<LooperHandler> wp;
+
+    {
+        unique_lock<mutex> l(sync.lock);
+        sync.cv.wait(l, [&sync]{return sync.step==1;});
+
+        wp = lh;
+        lh.reset();
+        ASSERT_EQ(1, wp.use_count());
+
+        sync.step = 2;
+        sync.cv.notify_one();
+    }
+
+    std::this_thread::sleep_for(chrono::milliseconds(10));
+    ASSERT_EQ(0, wp.use_count());
 }
